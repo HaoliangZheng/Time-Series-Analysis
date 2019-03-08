@@ -1,0 +1,108 @@
+---
+documentclass: ctexart
+
+includes: fancyhdr,geometry
+pagestyle: fancy
+fancypagestyle: plain
+geometry: "a4paper,left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm"
+
+
+title: \vspace{-4em}{第6章时间序列分析作业}
+author:
+  - 应用统计学16 2016310868 郑昊亮
+
+output:
+  rticles::ctex:
+    keep_tex: yes
+    fig_caption: no
+    number_sections: no
+    toc: no 
+classoption: "hyperref,"
+---
+## 6.20
+```{r}
+set.seed(123)
+series_6.20 = arima.sim(list(ar=0.7),n=48)
+```
+### (a)
+\noindent 理论自相关系数为：
+```{r}
+ACF_6.20 = ARMAacf(ar = 0.7, lag.max = 5)[-1]; ACF_6.20[c(1,5)]
+```
+### (b)
+\noindent 样本自相关系数为：
+```{r}
+SACF_6.20 = acf(series_6.20,lag.max=5,plot=F)$acf[-1]; SACF_6.20[c(1,5)]
+```
+
+\noindent 比较：
+\par 根据方程(6.1.5)和(6.1.6)可得，$r_1$的标准误差为$\sqrt{(1-\phi^2)/n}=\sqrt{(1-0.7^2)/48}=0.103$，$r_5$的标准误差为$\sqrt{\frac1n(\frac{1+\phi^2}{1-\phi^2})}=\sqrt{\frac1{48}(\frac{1+0.7^2}{1-0.7^2})}=0.247$。
+```{r}
+ACF_6.20[c(1,5)] - SACF_6.20[c(1,5)]
+```
+因此估计值落在真值的1倍标准误差内，估计效果很好。
+
+### (c)
+```{r}
+set.seed(8)
+series_6.20new = arima.sim(list(ar=0.7),n=48)
+SACF_6.20new = acf(series_6.20new,lag.max=5,plot=F)$acf[-1]; SACF_6.20new[c(1,5)]
+
+ACF_6.20[c(1,5)] - SACF_6.20new[c(1,5)]
+```
+通过改变随机种子进行新的模拟，发现1阶滞后处估计值与真值的差距在2倍标准差外，与上一问的情况完全不同，估计效果并不好。
+
+### (d)
+```{r}
+r1 = r5 = rep(NA,10000)
+for(k in 1:10000){
+  series = arima.sim(list(ar=0.7),n=48)
+  sacf = acf(series,lag.max=5,plot=FALSE)$acf[-1]
+  r1[k] = sacf[1]
+  r5[k] = sacf[5]
+}
+
+hist(r1); summary(r1); var(r1); sd(r1)
+
+hist(r5); summary(r5); var(r5); sd(r5)
+```
+通过10000次模拟构建的$r_1$和$r_5$的样本分布如上所示。
+对于$r_1$的样本分布，呈现出偏态分布，其方差为0.0134，标准差为0.1158，与理论近似得到的0.103较为接近。对于$r_5$的样本分布，呈现出对称分布，其方差为0.0342，标准差为0.1848，与理论近似得到的0.247较为接近。
+
+但是二者的均值与中位数都与理论值有一定差距，这是因为模拟中的n取值较小，即使大量重复，也不是大样本的情形。
+
+## 6.36
+```{r include = FALSE}
+library(TSA)
+data(robot)
+```
+### (a)
+```{r}
+plot(robot, type="o", ylab="Distence")
+```
+从图中我们可以看到，一方面该数据无论是均值还是方差都没有随着时间有大幅度变化，可以认为来自平稳过程；但另一方面，随着时间的增大，可以看到数据的值还是有一定的下降的倾向，因此也有非平稳的嫌疑。
+
+### (b)
+```{r}
+acf(robot)
+```
+ACF图像表现出拖尾的现象
+```{r}
+pacf(robot)
+```
+PACF图像则可以认为有截尾的现象，因此可以认为AR(3)模型比较符合该模式
+
+### (c)
+```{r}
+eacf(robot)
+```
+由EACF图像可以看到一个由零构成的三角模式，左上角为(1,1)位置，因此表明符合ARMA(1,1)模型
+
+### (d)
+```{r warning=FALSE}
+                        # nar,nma取值14时，程序会提示错误，因此改为12
+plot(armasubsets(y=robot,nar=12,nma=12,ar.method="ols")) 
+```
+由上图可知，BIC最小的模型包括AR项的1阶滞后和MA项的1、10阶滞后；而次优的模型则是ARMA(1,1)。
+
+考虑到模型的复杂程度，以及以上几问中的分析，我认为ARMA(1,1)模型是比较适合该数据集的。

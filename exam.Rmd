@@ -1,0 +1,276 @@
+---
+documentclass: ctexart
+
+includes: fancyhdr,geometry
+pagestyle: fancy
+fancypagestyle: plain
+geometry: "a4paper,left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm"
+
+
+title: 对上海私车牌照拍卖价格的时间序列分析
+author: 应用统计学16 2016310868 郑昊亮
+
+output:
+  rticles::ctex:
+    keep_tex: yes
+    fig_caption: no
+    number_sections: yes
+    toc: yes 
+classoption: "hyperref,"
+---
+\newpage
+
+```{r include=FALSE}
+library(TSA)
+library(tseries)
+library(forecast)
+library(stats)
+```
+
+# 引入
+1986年11月，上海第一辆“Z”字私人自备车牌照代码“沪-AZ0001”号诞生。这被认为是中国私家车开行的标志，也被视为改革开放的一个里程碑。此门一开，小汽车进入一般家庭便是历史大势，城市交通也面临着冲击与挑战。1994年，一个对机动车进行总量控制的制度应运而生：上海政府发布规定，以有底价、不公开拍卖的方式，对私车牌照额度进行市场化分配。这就是上海私车牌照拍卖制度的起源。
+\par 本文主要分析的对象即是上海私车牌照历史拍卖价格的时间序列数据，通过进行建模，试图获得价格变动的内在规律，并在此基础上预测未来的价格。通过本文的分析，首先可以更好地反映上海私车牌照拍卖价格二十多年来的变化情况，通过对价格的预测，一方面能够反映出未来上海对汽车牌照的需求变化，另一方面也能为未来的拍卖者提供一个价格依据。
+
+# 数据
+```{r include=FALSE}
+data = read.csv("C:/Users/dell/Desktop/Shanghai license plate price.csv")
+n = nrow(data)
+```
+
+## 数据集介绍
+数据集来自“上海市非营业性课程额度拍卖”官网中的“历史投标结果”栏目，网址为http://chepai.alltobid.com/contents/22/276.html 。该网页上的数据从2002年1月开始到2018年12月，每月公布一次，共203条（其中2008年2月的数据为\textbf{缺失值}）；每条数据包括：时间、投放数量、最低成交价（元）、平均成交价（元）、最低成交价截止时间、投标人数。
+\par 由于最低成交价截止时间对分析没有帮助，因此没有计入数据集中。在R中储存的数据框如下所示，
+```{r}
+head(data)
+```
+其中Time为时间，licenses为当月投放的牌照数量，lowest.price为最低成交价，avg.price为平均成交价，applicants为当月投标人数。虽然主要研究的对象为平均成交价，但由于投放的拍照数量、投标人数等变量可能可以帮助解释价格的变化，也就是进行时间序列回归。
+
+```{r}
+avg.price = ts(data[,4], start = c(2002,1), frequency = 12) 
+avg.price[74] = (avg.price[73] + avg.price[75])/2
+```
+\par 对于缺失值，由于仅一个且其相邻位置没有出现明显的变化规律，因此用一般的插补方法进行插补即可（例如取相邻位置的加和平均）。
+
+## 数据展示与分析
+作拍卖价格的时间序列图如下：
+```{r}
+plot(avg.price, xaxt="n", type = "o", pch =20, cex = 0.6)
+axis(1,at=seq(2002,2018,2),las=1)
+
+timepoint1 = c(29,30,72,73); timepoint2 = c(108,135)
+timepoints1 = time(avg.price)[timepoint1]; timepoints2 = time(avg.price)[timepoint2]
+points(timepoints1, avg.price[timepoint1], col="red")
+points(timepoints2, avg.price[timepoint2], col="blue")
+```
+可以看到，数据有明显的上升趋势，同时在\textbf{红点}处出现了剧烈的变化，可能要引入干预分析；在\textbf{蓝点}处出现了突出点，可能要引入异常值。红点对应的具体时间点为：\textbf{2004年4月与5月} 以及 \textbf{2007年12月与2008年1月}；蓝点对应的时间点为\textbf{2010年12月} 和 \textbf{2013年3月}。
+
+\par 对历史背景进行分析，发现：
+\par \noindent 1、2004年5月1日，《道路交通安全法》实施，规定申请机动车登记应提交五种证明，并无拍卖牌照的说法。\textbf{2004年5月24日}，时任商务部部长助理的黄海在央视表示，上海的私车牌照拍卖违反了《道路交通安全法》。这是上海该项措施诞生以来，受到的最为明确的批评，一时令其合法性之争，在社会各界公开化、沸腾化。当年7月7日举行的上海市政府新闻发布会上，时任上海市政府法制办主任的徐强表示，经请示全国人大、国务院等，各方都认为上海拍卖私牌的做法没有违法。上海作为国际大都市，在不同发展阶段，对交通采取一定的特殊管理措施完全正当。
+\par 这就解释了为何2004年4月开始车牌价格剧烈下降，并在几个月后回复到原来的水平。考虑到最后上海市政府对合法性进行了阐明，因此对价格的影响应该是短期的，可以考虑在此处引入\textbf{脉冲响应干预}。
+\newline
+\par \noindent 2、\textbf{2008年1月3日}，上海私车牌照额度拍卖新办法出炉。从上海国际拍卖公司公布的竞拍新规来看，投标拍卖将分为两个阶段进行，使得竞买人在投标过程中能够修改竞标价格；同时，拍卖方还将通过网上、电话或现场即时公布所有当前投标信息，包括当前投标人数和当前时间的最低中标价格等关键信息。这一力求从两个方面来抑制车牌额度继续上涨的动因。一是提供多次出价机会，二是信息全部公开透明。
+\par 这就解释了为何车牌价格从2007年12月的高点在2008年1月突然跌到低谷。考虑到这样的新规在一段时间内都影响着拍卖的规则，拍卖者也需要不断适应这样的规则，因此考虑在此引入\textbf{阶梯响应干预}。
+\newline
+\par \noindent 3、至于2010年12月价格的急剧下降，网友均表示这是“大爆冷门”，没有明显的原因。可以看到在2011年1月，价格又恢复到原来水平，因此考虑在此引入\textbf{可加异常值}。2013年3月的价格高点也同理。
+
+# 模型的建立
+  由于数据具有明显的上升趋势，先做一阶差分，差分后结果如下所示
+```{r}
+plot(diff(avg.price), xaxt="n", type = "o", pch =20, cex = 0.6)
+axis(1,at=seq(2002,2018,2),las=1)
+```
+可以看到，经过差分之后，除了上文提到的几个特殊的时间点之外，在其余时间点上时间序列还是较为平稳的。
+
+该数据没有表现出明显的ARCH效应，为了确认，进行 McLeod-Li 检验：
+```{r fig.height=3.5,fig.width=5.5}
+McLeod.Li.test(y = diff(avg.price))
+```
+
+\noindent 可以看到在4阶之后结果都不显著，与观察基本一致，因此无需引入ARCH效应。（之所以在前3阶出现显著，可能与干预和异常值导致的表面上的“波动集群”有关）
+
+\par 先不引入干预分析与可加异常值，按照一般的ARIMA模型建立过程，得到以下模型一。
+
+## 模型一（ ARIMA(1,1,1) ）
+### 模型的识别
+为了对模型一进行识别，绘制差分后的数据的acf，pacf和eacf图如下：
+```{r fig.width=9}
+op = par(mfrow=c(1,2))
+acf(diff(avg.price), main="")
+pacf(diff(avg.price), main="")
+eacf(diff(avg.price), ar.max = 4, ma.max = 9)
+```
+\noindent 从acf和pacf中可以看出，截尾的阶数主要在1阶附近，而eacf中没有明显的三角形状，这可能与没有去除掉外界冲击的效应有关。
+
+\par 如下图所示，从最优子集的角度讲，只引入MA1或引入MA1和AR1是较为合适的。
+```{r fig.height=3,fig.width=5}
+plot(armasubsets(y= diff(avg.price),nar=3,nma=3,ar.method="ols"))
+```
+
+### 模型的拟合与检验
+先选择ARIMA（1，1，1）进行拟合，模型结果如下：
+```{r fig.height=10}
+model1 = arima(avg.price,order=c(1,1,1)); model1
+```
+结果显示ar系数和ma系数均显著异于0，AIC值为3997.76。
+\newline
+\par \noindent 原数据与拟合值的时间序列图如下：
+```{r}
+fit = avg.price - model1$residuals
+plot(avg.price, main = "Avg.price and Fitted Values")
+lines(fit,col="green")
+```
+黑线代表原数据，绿线代表拟合值。可以看出绿线与黑线实则有一定的“缝隙”，并且在干预处以及异常值的位置，拟合效果并不好。
+
+\par 运用标准化残差的时间序列图、残差的ACF图和Ljung-Box检验图对模型进行检验：
+```{r fig.height=8, fig.width=5}
+tsdiag(model1,gof=15)
+```
+
+
+Ljung-Box显示在15阶以内的残差没有显著的自相关性；但标准化残差中出现几处明显突起，数值大于3，这应该与没有引入干预效应和异常值有关。
+
+\par 从以上简单的分析中可以看到，对于这样的数据，不引入干预分析，仅用ARIMA（1，1，1）进行建模，可以取得一定的效果，但还有很多瑕疵。所以接下来的重点是引入干预分析，得到更完善的模型二，再与此处简单的模型一做对比，看干预分析的优势所在。
+
+
+## 模型二（引入干预分析与异常值）
+本模型具有两次干预，设拍卖价格的时间序列为$\{Y_t\}$，则一般模型由下式给出：
+$$
+Y_t = m_t + m'_t + N_t
+$$
+其中，$m_t$代表第一次干预（2004年5月24日）导致的均值函数的变化，$m'_t$代表第二次干预（2008年1月3日）导致的均值函数的变化，$\{N_t\}$的模型是ARIMA过程。
+\par 过程$\{N_t\}$代表着未受干预影响的基础时间序列，称作无扰过程。假设时间序列在时刻$T$第一次受到干预，称时间序列$\{Y_t,t<T\}$为预干预数据，可用其识别无扰过程$\{N_t\}$的模型。接下来的第一步就是识别无扰过程的模型。
+
+### 预干预期间数据建模
+认为$T$为2004年4月，则在此之前为预干预期间，为了对无扰过程的模型进行识别，绘制这一期间差分后的数据的acf，pacf和eacf图如下：
+```{r fig.width=9}
+op = par(mfrow=c(1,2))
+acf(diff( window(avg.price,end=c(2004,3)) ), main="")
+pacf(diff( window(avg.price,end=c(2004,3)) ), main="")
+eacf(diff( as.numeric(window(avg.price,end=c(2004,3))) ), ar.max = 5, ma.max = 7)
+```
+\noindent 从acf中可以看出，数值基本都在虚线范围内，暗示可能只包含$e_t$项。从pacf中可以看出，只有在二阶出现显著，基本是截尾现象，暗示可能是AR过程。而eacf中没有明显的三角形状，但以(2,1)为顶点可以构成一个由"o"构成的三角形。由以上的分析认为，AR(2)模型可能比较适合。
+
+\par 如下图所示，从最优子集的角度讲，引入AR2是较为合适的。
+```{r warning=FALSE,fig.height=3,fig.width=5}
+plot(armasubsets(y= diff( window(avg.price,end=c(2004,3)) ),nar=3,nma=2,ar.method="ols"))
+```
+
+
+### 引入干预效应
+要处理时间序列中的干预分析及异常值，需要利用 \textbf{arimax} 函数，该函数是 arima 函数的扩展。假设干扰影响过程的均值，相对未受干扰的均值函数的偏差被称作\textbf{传递函数}。传递函数又由动态部分和协变量两部分组成，动态部分为ARMA滤波器的形式，表示如下：
+$$
+\frac{(a_0+a_1B+\cdots+a_qB^q)}{(1-b_1B-b_2B^2\cdots-b_pB^p)}\mbox{协变量}
+$$
+
+\noindent airmax 函数中的参数 \textbf{xtransf} 表示传递函数中的协变量，参数 \textbf{transfer} 表示传递函数中的动态部分的(p,q)阶数。
+
+我的模型设定为：
+$$
+m_t = \frac{a_0+a_1B}{1-b_1B}P_t^{(T)} 
+$$
+$$
+m'_t = \frac{a'_0+a'_1B}{1-b'_1B}P_t^{(T')}
+$$
+
+\noindent 其中$T$表示2004年5月的第一次干预，$T'$表示2008年1月的第二次干预。
+\newline
+\noindent 模型拟合如下：
+```{r}
+model2.1 = arimax(avg.price, order = c(2,1,0),
+           xtransf=data.frame(I524=1*(seq(avg.price)==29),I13=1*(seq(avg.price)>=73)),
+           transfer = list( c(1,1),c(1,1) ),
+           fixed = c(NA,NA,0.95,NA,NA,0.45,NA,NA) )
+# 由于在模型拟合中发现ARMA滤波器的AR项的估计会出现不收敛的情况；
+# 因此我直接为b1和b'1赋值0.95和0.45，没有进行估计，所以结果的标准误为0
+model2.1
+```
+可以看到ar1和ar2的系数并不显著；但是干预效应的系数均十分显著，说明引入干预效应是正确的。（I524表示5月24日导致的第一次干预，I13表示1月3日导致的第二次干预）
+\vspace{2em}
+\par 两次干预造成影响的估计如下图所示：
+```{r fig.width=9}
+op = par(mfrow=c(1,2))
+MAY24=1*(seq(avg.price)==29)
+plot(ts(MAY24*(13606/0.95)+
+        filter(MAY24,filter=.95,method='recursive',side=1)*(-10741-13606/0.95),
+        frequency=12,start=2002),type='h',ylab='5/24 Effects')
+abline(h=0)
+
+JAN3=1*(seq(avg.price)==73)
+plot(ts(JAN3*(-20933/0.45)+
+        filter(JAN3,filter=.45,method='recursive',side=1)*(-32581+20933/0.45),
+        frequency=12,start=2002),type='h',ylab='1/3 Effects')
+abline(h=0)
+```
+可见2004年5月24日的第一次干预随着时间的推移影响逐渐减少；而2008年1月3日的第二次干预在当月有很大的降低价格的影响，在其后反而出现反作用，然后影响迅速消失，可能说明新的规则并没有很好的起到降低价格的作用。
+\vspace{1em}
+\par 在已建立模型的基础上，接下来就可以引入可加异常值。
+\vspace{-0.5em}
+
+### 引入可加异常值
+
+首先运用 detectAO 函数检测 model2.1 中的可加异常值
+```{r warning=FALSE}
+detectAO(model2.1)
+```
+结果显示存在三个可加异常值，其位置正是2010年12月和2013年3月附近，这与我在第二节中的分析完全一致。
+
+\par 接下来利用 arimax 中的 \textbf{xreg} 参数来引入可加异常值，方法为加入Dec10、Jan11 和 Mar13 三个示性变量代表上述三个可加异常值发生的位置，其他参数不变，模型拟合如下：
+```{r}
+model2.2 = arimax(avg.price, order = c(2,1,0),
+           xtransf=data.frame(I524=1*(seq(avg.price)==29),I13=1*(seq(avg.price)>=73)),
+           transfer = list( c(1,1),c(1,1) ),
+           xreg=data.frame( Dec10=1*(seq(avg.price)==108), Jan11=1*(seq(avg.price)==109), 
+                            Mar13=1*(seq(avg.price)==135)),
+           fixed = c(NA,NA,NA,NA,NA,0.95,NA,NA,0.45,NA,NA) )
+
+model2.2
+```
+可以看到ar1和ar2的系数并不显著；但是干预效应的系数仍十分显著，并且可加异常值的系数都十分显著，说明引入可加异常值的正确的。
+
+
+原数据与拟合值的时间序列图如下：
+```{r}
+plot(avg.price, main = "Avg.price and Fitted Values")
+lines(fitted(model2.2),col="green")
+```
+黑线代表原数据，绿线代表拟合值。可以看出绿线与黑线基本吻合，并且在干预处以及异常值的位置拟合效果也很好。
+
+### 模型的检验
+运用标准化残差的时间序列图、残差的ACF图和Ljung-Box检验图对模型进行检验：
+```{r fig.height=8, fig.width=5}
+tsdiag(model2.2,gof=15)
+```
+
+\noindent 标准化残差基本都在3以内，且没有表现出规律性；残差的ACF也没有显著项；Ljung-Box检验在考虑的阶数大于3以后也都不显著。以上的检验结果表明模型二拟合效果良好，克服了模型一出现的一些问题。
+
+### 预测
+通过以上的分析，确定了最终的模型——模型二；接下来就可以进一步利用模型进行预测了，结果如下：
+
+```{r echo=FALSE, fig.height=4, fig.width=5}
+plot(forecast(auto.arima(avg.price)),main = "Forecasts")
+```
+
+\noindent 黑线为原始数据，蓝线为预测值，阴影代表预测极限。可以看到拍卖价格可能会进一步上升，但是上升的速率会小于2015年前的高速上涨。
+\par 对于具体的预测值，比如2019年1月，其最佳预测为88326.13，95%置信水平下的置信区间为(79481.63,97170.64)。由于报告截止前2019年1月的拍卖价格已在网站中公示，其平均成交价为89565，符合预测结果，因此说明我的模型是有一定实际价值的。
+\par 因为已有2019年1月的数据，因此其他的预测可以利用预测的更新来提高准确度。
+
+# 分析与结论
+## 模型的比较分析
+从模型拟合的角度讲，通过比较两个模型“原数据与拟合值的时间序列图”可以看出，模型二的拟合值与原数据的“贴合”程度是要优于模型一的，这体现为两方面：一是模型一的绿线与黑线有一定的缝隙，而模型二的绿线与黑线基本吻合；二是模型一在干预处以及异常值的位置拟合效果并不好，而模型二在干预处以及异常值的位置拟合效果也很好。
+\par 另外，虽然模型二引入了更多需要估计的参数，比模型一更为复杂。但模型二的AIC为3778.5，模型一的AIC为3997.76,模型二的AIC实则远小于模型一。这说明引入干预分析与可加异常值极大地提高了拟合效果，因此AIC变小。
+\par 模型二优于模型一的地方也可以在标准化残差的时间序列图中看出，模型一的残差有几个位置大于3，这就是没有考虑干预效应和异常值导致的；而模型一的残差基本都在3以内，说明没有问题。
+\newline
+\par 最后，由于我在尝试中发现，数据集中其他几个变量对拍卖价格的相关性并不强，引入这几个变量的信息进行时间序列回归无法得到很好的效果，因此在本文中没有涉及与讨论。可能其他的变量（如上海市的可支配收入，上海市人口等）对拍卖价格的预测有更好的帮助，这值得进一步分析和探究，也是模型可以进一步改进的地方。
+
+## 关于车牌价格的结论
+首先是可以认为上海私车牌照拍卖价格符合\textbf{带有两个干预效应以及三个可加异常值的ARIMA(2,1,0)过程}。
+\par 其次是通过干预分析对影响的估计发现，2008年1月引入的新规则并没有很好的起到降低价格的作用。
+\par 最后是对价格的预测可以看出，拍卖价格可能会进一步上升，但是上升的速率会小于2015年前的高速上涨。并且可以利用该模型对未来的拍卖价格进行一定的预测，为拍卖者在出价上提供一定的辅助。
+
+
+
+# 参考资料
+\noindent [1] 数据来源：http://chepai.alltobid.com/contents/22/276.html
+\par \noindent \quad 爬虫数据：https://www.kaggle.com/bogof666/shanghai-car-license-plate-auction-price
+\par \noindent [2] 上海车牌拍卖制度“变形记”[J]. 决策, 2008(4):57-60.
+\par \noindent [3] 《上海推出私车牌照额度拍卖新办法》\quad 网址：http://www.shanghai.gov.cn/nw2/nw2314/nw32419/nw32422/index.html

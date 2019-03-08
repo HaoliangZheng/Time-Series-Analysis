@@ -1,0 +1,165 @@
+---
+documentclass: ctexart
+
+includes: fancyhdr,geometry
+pagestyle: fancy
+fancypagestyle: plain
+geometry: "a4paper,left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm"
+
+
+title: \vspace{-4em}{第8、9章时间序列分析作业}
+author:
+  - 应用统计学16 2016310868 郑昊亮
+
+output:
+  rticles::ctex:
+    keep_tex: yes
+    fig_caption: no
+    number_sections: no
+    toc: no 
+classoption: "hyperref,"
+---
+```{r include=FALSE}
+library(TSA)
+```
+# 第8章
+
+## 8.4
+```{r}
+set.seed(321)
+series = arima.sim(n=30,list(ar=0.5))
+```
+
+### (a)
+```{r}
+model = arima(series,order=c(1,0,0))
+plot(rstandard(model),ylab = "Standard Residuals", type = "o"); abline(h=0)
+```
+从图中可以看出，残差随时间的变化没有表现出一定的模式，是较为随机的，因此该图支持AR(1)的模型设定。
+
+### (b)
+```{r}
+qqnorm(residuals(model)); qqline(residuals(model))
+```
+从图中可以看出，除了在尾部有一些偏离外，标准残差的Q-Q图整体上是比较接近直线，可以看作正态，因此该图支持AR(1)的模型设定。
+
+### (c)
+```{r}
+acf(residuals(model),main="")
+```
+从图中可以看出，各个滞后的残差的自相关系数均明显小于2倍标准差，说明残差可以看作白噪声，因此该图支持AR(1)的模型设定。
+
+### (d)
+```{r}
+LB.test(model,lag=8)
+```
+由于p值大于0.05，没有证据来拒绝误差项是不相关的零假设，因此该统计量支持AR(1)的模型设定。
+
+## 8.7
+### (a)
+```{r}
+data(hare)
+model = arima(sqrt(hare),order=c(3,0,0))
+acf(rstandard(model),main="")
+```
+从图中可以看出，残差的自相关系数均小于2倍标准差，没有明显的相关性。
+
+### (b)
+```{r}
+LB.test(model,lag=9)
+```
+由于p值大于0.05，没有证据来拒绝误差项是不相关的零假设。
+
+### (c)
+```{r}
+runs(rstandard(model))
+```
+由于p值大于0.05，说明该残差序列的游程数是正常的，没有证据来拒绝误差项是不相关的零假设。
+
+### (d)
+```{r}
+qqnorm(residuals(model)); qqline(residuals(model))
+```
+从图中可以看出，Q-Q图呈现了一定的弯曲，在两端有可接受的几个异常值。应当对残差的正态性做进一步的研究。
+
+### (e)
+```{r}
+shapiro.test(residuals(model))
+```
+由于p值大于0.05，在$\alpha = 0.05$的显著性水平下我们不拒绝误差具有正态性的零假设。
+
+
+# 第9章
+
+## 9.9
+```{r}
+set.seed(321)
+series = arima.sim(n=48,list(ar=0.8)) + 100
+actual = window(series,start=41); series = window(series,end=40)
+```
+
+### (a)
+```{r}
+model = arima(series,order=c(1,0,0)); model
+```
+结果如上所示，可见在这个模拟中，对$\phi$和$\mu$的极大似然估计是较为准确的。
+
+### (b)
+```{r}
+result = plot(model,n.ahead = 8,ylab = "Series & Forecasts",col=NULL,pch=19,type="o")
+abline(h = coef(model)[2])
+```
+对接下来8个值的预测如图中实心原点所示，可见这些值随着$l$的增加呈指数衰减至序列均值。
+
+### (c)
+```{r}
+forecast = result$pred; e = actual - forecast; cbind(actual,forecast,e)
+```
+真实值、预测值的比较以及残差如上表所示。
+
+### (d)
+```{r}
+plot(model,n.ahead = 8,ylab = "Series, Forecasts, Actuals & Limits",pch=19,type="o")
+abline(h = coef(model)[2])
+points(x=(41:48),y=actual,pch=3)
+```
+真实值如图中加号表示，他们都落在了以虚线表示的预测区间内部。
+
+### (e)
+更换随机种子，重复过程如下：
+```{r}
+set.seed(123)
+series = arima.sim(n=48,list(ar=0.8)) + 100
+actual = window(series,start=41); series = window(series,end=40)
+
+model = arima(series,order=c(1,0,0)); model
+```
+在本次模拟中对$\phi$的极大似然估计没有上一次准确。
+
+```{r}
+result = plot(model,n.ahead = 8,ylab = "Series & Forecasts",col=NULL,pch=19,type="o")
+abline(h = coef(model)[2])
+
+forecast = result$pred; e = actual - forecast; cbind(actual,forecast,e)
+
+plot(model,n.ahead = 8,ylab = "Series, Forecasts, Actuals & Limits",pch=19,type="o")
+abline(h = coef(model)[2])
+points(x=(41:48),y=actual,pch=3)
+```
+可以看到向前两步的真实值落在预测区间外。
+
+## 9.21
+### (a)
+```{r}
+data(deere3)
+model = arima(deere3,order=c(1,0,0))
+predict(model,n.ahead = 10)$pred
+```
+预测结果如上所示，可见前置8期及之后的预测基本保持常数。
+
+### (b)
+```{r}
+plot(model,n.ahead = 10,ylab = "Deviation",pch=19,type="o")
+abline(h = coef(model)[2])
+```
+由于模型为AR(1)，$\phi$的估计为0.5，所以该模型没有很强的自相关性也不会展现出其他模式，预测很快地趋于序列的均值。（$\mu$的估计为124）
